@@ -1,0 +1,831 @@
+local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/KingScriptAE/No-sirve-nada./refs/heads/main/main.lua"))()
+local FLOW_SPEED = 5.5
+local BORDER_THICKNESS = 1.7
+local FIXED_FONT = Enum.Font.SourceSansBold
+
+-- 提前获取核心变量，防止报错
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local WhiteFlowTheme = ColorSequence.new({
+	ColorSequenceKeypoint.new(0.00, Color3.fromHex("0A1A3A")),
+	ColorSequenceKeypoint.new(0.25, Color3.fromHex("1E3A8A")),
+	ColorSequenceKeypoint.new(0.45, Color3.fromHex("2563EB")),
+	ColorSequenceKeypoint.new(0.55, Color3.fromHex("60A5FA")),
+	ColorSequenceKeypoint.new(0.75, Color3.fromHex("3B82F6")),
+	ColorSequenceKeypoint.new(1.00, Color3.fromHex("0A1A3A")),
+})
+local borderAnimation
+local borderInitialized = false
+
+function gradient(text, startColor, endColor)
+    local result = ""
+    local chars = {}
+    for uchar in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        table.insert(chars, uchar)
+    end
+    local length = #chars
+    for i = 1, length do
+        local t = (i - 1) / math.max(length - 1, 1)
+        local r = startColor.R + (endColor.R - startColor.R) * t
+        local g = startColor.G + (endColor.G - startColor.G) * t
+        local b = startColor.B + (endColor.B - startColor.B) * t
+        result = result .. string.format('<font color="rgb(%d,%d,%d)">%s</font>', 
+            math.floor(r * 255), math.floor(g * 255), math.floor(b * 255), chars[i])
+    end
+    return result
+end
+
+local function StartFontEnforcer()
+    if not Window or not Window.UIElements then 
+        task.wait(1)
+        if not Window or not Window.UIElements then return end
+    end  
+    local MainFrame = Window.UIElements.Main
+    local function setFont(instance)
+        if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+            pcall(function() 
+                instance.Font = FIXED_FONT 
+                instance.RichText = true
+            end)
+        end
+    end
+    for _, child in ipairs(MainFrame:GetDescendants()) do
+        setFont(child)
+    end
+    MainFrame.DescendantAdded:Connect(function(child)
+        setFont(child)
+    end)
+end
+
+local function createBorder(window)
+    if not window or not window.UIElements then
+        task.wait(1)
+        if not window or not window.UIElements then return nil end
+    end
+    local mainFrame = window.UIElements.Main
+    if not mainFrame then return nil end    
+    if mainFrame:FindFirstChild("FlowBorder") then return mainFrame.FlowBorder end    
+    if not mainFrame:FindFirstChildOfClass("UICorner") then
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 16)
+        corner.Parent = mainFrame
+    end    
+    local stroke = Instance.new("UIStroke")
+    stroke.Name = "FlowBorder"
+    stroke.Thickness = BORDER_THICKNESS
+    stroke.Color = Color3.new(1, 1, 1)
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.LineJoinMode = Enum.LineJoinMode.Round
+    stroke.Enabled = true
+    stroke.Parent = mainFrame    
+    local gradient = Instance.new("UIGradient")
+    gradient.Name = "StreamEffect"
+    gradient.Color = WhiteFlowTheme
+    gradient.Rotation = 0
+    gradient.Parent = stroke    
+    return stroke
+end
+
+local function startBorderAnimation(window)
+    if not window or not window.UIElements then return nil end
+    local mainFrame = window.UIElements.Main
+    if not mainFrame then return nil end    
+    local stroke = mainFrame:FindFirstChild("FlowBorder")
+    if not stroke then return nil end    
+    local gradient = stroke:FindFirstChild("StreamEffect")
+    if not gradient then return nil end    
+    if borderAnimation then borderAnimation:Disconnect() borderAnimation = nil end    
+    local animation
+    animation = RunService.Heartbeat:Connect(function()
+        if not stroke or stroke.Parent == nil then
+            animation:Disconnect()
+            return
+        end
+        gradient.Rotation = (tick() * FLOW_SPEED * 20) % 360
+    end)
+    borderAnimation = animation
+    return animation
+end
+
+Window = WindUI:CreateWindow({
+    Title = gradient("自然灾害", Color3.fromHex("#3B82F6"), Color3.fromHex("#60A5FA")), 
+    Author = gradient("作者:神之", Color3.fromHex("#2563EB"), Color3.fromHex("#93C5FD")),
+    IconThemed = true,
+    Folder = "Atomic",
+    Transparent = true,
+    Theme = "Dark",
+    SideBarWidth = 120,
+    HideSearchBar = true,
+    ScrollBarEnabled = true,
+    BackgroundImageTransparency = 0.55,
+    User = {
+        Enabled = true,
+        Anonymous = false,
+        Callback = function()
+        end
+    },
+})
+
+Window:EditOpenButton({
+    Title = "[点击打开自然灾害]",
+    CornerRadius = UDim.new(0,2),
+    StrokeThickness = 0.5
+})
+
+Window:SetToggleKey(Enum.KeyCode.F, true)
+
+if not borderInitialized then
+    task.spawn(function()
+        task.wait(0.5) 
+        local stroke = createBorder(Window)
+        if stroke then
+            startBorderAnimation(Window)
+            borderInitialized = true
+        end
+        
+        StartFontEnforcer()
+    end)
+end
+
+local originalOpenFunction = Window.Open
+Window.Open = function(...)
+    local result = originalOpenFunction(...)
+    if borderInitialized and not borderAnimation then
+        task.wait(0.1)
+        startBorderAnimation(Window)
+    end
+    return result
+end
+
+Window:OnClose(function()
+    if borderAnimation then
+        borderAnimation:Disconnect()
+        borderAnimation = nil
+    end
+end)
+
+-- ===== 标签页定义 (甩飞放在设置上面) =====
+local Tabs = {
+    Notice = Window:Tab({ Title = "公告", Icon = "megaphone" }),
+    Info = Window:Tab({ Title = gradient("信息", Color3.fromHex("#60A5FA"), Color3.fromHex("#3B82F6")), Icon = "info"}),
+    Player = Window:Tab({ Title = "玩家", Icon = "user" }),
+    Teleport = Window:Tab({ Title = "传送", Icon = "map-pin" }),
+    BlackHole = Window:Tab({ Title = "黑洞", Icon = "circle" }),
+    Esp = Window:Tab({ Title = "ESP", Icon = "eye" }),
+    Fling = Window:Tab({ Title = "甩飞", Icon = "refresh-ccw" }),
+    Settings = Window:Tab({ Title = "设置", Icon = "settings" })
+}    
+
+-- ===== 公告页组件定义 =====
+Tabs.Notice:Section({Title = "📢 脚本公告"})
+Tabs.Notice:Paragraph({ Title = "欢迎使用自然灾害脚本", Desc = "本脚本免费开源，请勿倒卖！" })
+Tabs.Notice:Divider()
+Tabs.Notice:Paragraph({ Title = "更新日志", Desc = "修复了黑洞崩溃问题，增加了ESP透视等功能。" })
+Tabs.Notice:Divider()
+Tabs.Notice:Button({
+    Title = "🐧 点击复制QQ群",
+    Desc = "1126544677",
+    Callback = function()
+        local qqGroup = "1126544677"
+        if setclipboard then
+            setclipboard(qqGroup)
+            WindUI:Notify({ Title = "✅ 复制成功", Content = "QQ 群号 " .. qqGroup .. " 已复制", Duration = 3, Icon = "clipboard-check" })
+        else
+            WindUI:Notify({ Title = "❌ 复制失败", Content = "执行器不支持复制", Duration = 3, Icon = "alert-circle" })
+        end
+    end,
+})
+
+-- ===== 信息页组件定义 =====
+local playerNameDesc = Tabs.Info:Paragraph({ Title = "玩家名字:", Desc = "正在加载..." })
+local executorDesc = Tabs.Info:Paragraph({ Title = "注入器:", Desc = "正在加载..." })
+local healthDesc = Tabs.Info:Paragraph({ Title = "当前血量:", Desc = "正在加载..." })
+local playerCountDesc = Tabs.Info:Paragraph({ Title = "服务器人数:", Desc = "正在加载..." })
+local serverDesc = Tabs.Info:Paragraph({ Title = "所在服务器:", Desc = "正在加载..." })
+
+Tabs.Info:Divider()
+Tabs.Info:Paragraph({ Title = "提示", Desc = "这个脚本是适配自然灾害的，请到对应地图使用。" })
+
+-- ===== 传送页组件定义 =====
+Tabs.Teleport:Section({Title = "传送功能"})
+Tabs.Teleport:Button({
+    Title = "🏰 传送回哨塔",
+    Desc = "",
+    Callback = function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(-279, 179, 342)
+            WindUI:Notify({ Title = "✅ 传送成功", Content = "已传送回哨塔", Duration = 2, Icon = "check" })
+        end
+    end,
+})
+Tabs.Teleport:Button({
+    Title = "🏝️ 传送到岛屿",
+    Desc = "",
+    Callback = function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(-120, 47, 25)
+            WindUI:Notify({ Title = "✅ 传送成功", Content = "已传送到岛屿", Duration = 2, Icon = "check" })
+        end
+    end,
+})
+
+-- ===== 黑洞页组件定义 =====
+Tabs.BlackHole:Section({Title = "超级黑洞 (原版完美复刻)"})
+local config = { radius = 50, height = 100, rotationSpeed = 10, attractionStrength = 1000 }
+
+if not getgenv().Network then
+    getgenv().Network = { BaseParts = {}, Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) }
+    Network.RetainPart = function(Part)
+        if typeof(Part) == "Instance" and Part:IsA("BasePart") and Part:IsDescendantOf(Workspace) then
+            table.insert(Network.BaseParts, Part)
+            Part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+            Part.CanCollide = false
+        end
+    end
+    local function EnablePartControl()
+        LocalPlayer.ReplicationFocus = Workspace
+        RunService.Heartbeat:Connect(function()
+            pcall(function() sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge) end)
+            for _, Part in pairs(Network.BaseParts) do
+                if Part:IsDescendantOf(Workspace) then Part.Velocity = Network.Velocity end
+            end
+        end)
+    end
+    EnablePartControl()
+end
+
+local parts = {}
+local function RetainPart(Part)
+    if Part:IsA("BasePart") and not Part.Anchored and Part:IsDescendantOf(Workspace) then
+        if Part.Parent == LocalPlayer.Character or Part:IsDescendantOf(LocalPlayer.Character) then return false end
+        if not Part:FindFirstChild("Torque") then
+            for _, x in next, Part:GetChildren() do
+                if x:IsA("BodyAngularVelocity") or x:IsA("BodyForce") or x:IsA("BodyGyro") or x:IsA("BodyPosition") or x:IsA("BodyThrust") or x:IsA("BodyVelocity") or x:IsA("RocketPropulsion") then x:Destroy() end
+            end
+            if Part:FindFirstChild("Attachment") then Part:FindFirstChild("Attachment"):Destroy() end
+            if Part:FindFirstChild("AlignPosition") then Part:FindFirstChild("AlignPosition"):Destroy() end
+            Part.CanCollide = false
+            local Torque = Instance.new("Torque", Part)
+            Torque.Torque = Vector3.new(100000, 100000, 100000)
+            local Attachment2 = Instance.new("Attachment", Part)
+            Torque.Attachment0 = Attachment2
+            local AlignPosition = Instance.new("AlignPosition", Part)
+            AlignPosition.MaxForce = 9999999999999999999999999999999
+            AlignPosition.MaxVelocity = math.huge
+            AlignPosition.Responsiveness = 200
+            AlignPosition.Attachment0 = Attachment2
+        end
+        Part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+        Part.CanCollide = false
+        return true
+    end
+    return false
+end
+
+local function addPart(part) if RetainPart(part) and not table.find(parts, part) then table.insert(parts, part) end end
+local function removePart(part) local index = table.find(parts, part); if index then table.remove(parts, index) end end
+for _, part in pairs(Workspace:GetDescendants()) do addPart(part) end
+Workspace.DescendantAdded:Connect(addPart)
+Workspace.DescendantRemoving:Connect(removePart)
+
+local ringPartsEnabled = false
+RunService.Heartbeat:Connect(function()
+    if not ringPartsEnabled then return end
+    local humanoidRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if humanoidRootPart then
+        local tornadoCenter = humanoidRootPart.Position
+        for _, part in pairs(parts) do
+            if part.Parent and not part.Anchored then
+                local pos = part.Position
+                local distance = (Vector3.new(pos.X, tornadoCenter.Y, pos.Z) - tornadoCenter).Magnitude
+                local angle = math.atan2(pos.Z - tornadoCenter.Z, pos.X - tornadoCenter.X)
+                local newAngle = angle + math.rad(config.rotationSpeed)
+                local targetPos = Vector3.new(
+                    tornadoCenter.X + math.cos(newAngle) * math.min(config.radius, distance),
+                    tornadoCenter.Y + (config.height * (math.abs(math.sin((pos.Y - tornadoCenter.Y) / config.height)))),
+                    tornadoCenter.Z + math.sin(newAngle) * math.min(config.radius, distance)
+                )
+                local directionToTarget = (targetPos - part.Position).unit
+                part.Velocity = directionToTarget * config.attractionStrength
+            end
+        end
+    end
+end)
+
+Tabs.BlackHole:Toggle({
+    Title = "开启超级黑洞 (完美复刻)", Icon = "circle", Default = false,
+    Callback = function(enabled)
+        ringPartsEnabled = enabled
+        if LocalPlayer.Character then
+            for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+                if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then v.CanCollide = not enabled end
+            end
+        end
+        if enabled then WindUI:Notify({ Title = "🌀 超级黑洞", Content = "已开启", Duration = 2, Icon = "circle" })
+        else WindUI:Notify({ Title = "🌀 超级黑洞", Content = "已关闭", Duration = 2, Icon = "x" }) end
+    end,
+})
+
+local radiusSlider = Tabs.BlackHole:Slider({ Title = "环绕半径 (Radius)", Step = 10, Value = {Min = 0, Max = 500, Default = 50}, Callback = function(value) config.radius = value end })
+local heightSlider = Tabs.BlackHole:Slider({ Title = "悬浮高度 (Height)", Step = 10, Value = {Min = 0, Max = 300, Default = 100}, Callback = function(value) config.height = value end })
+local speedSlider = Tabs.BlackHole:Slider({ Title = "旋转速度 (Rotation Speed)", Step = 1, Value = {Min = 0, Max = 100, Default = 10}, Callback = function(value) config.rotationSpeed = value end })
+local forceSlider = Tabs.BlackHole:Slider({ Title = "吸附力量 (Attraction Strength)", Step = 100, Value = {Min = 0, Max = 10000, Default = 1000}, Callback = function(value) config.attractionStrength = value end })
+
+Tabs.BlackHole:Button({
+    Title = "恢复默认配置", Desc = "点击恢复原版配置和滑块进度条",
+    Callback = function()
+        config.radius = 50; config.height = 100; config.rotationSpeed = 10; config.attractionStrength = 1000
+        pcall(function() radiusSlider:Set(50) end); pcall(function() heightSlider:Set(100) end); pcall(function() speedSlider:Set(10) end); pcall(function() forceSlider:Set(1000) end)
+        pcall(function() radiusSlider:SetValue(50) end); pcall(function() heightSlider:SetValue(100) end); pcall(function() speedSlider:SetValue(10) end); pcall(function() forceSlider:SetValue(1000) end)
+        WindUI:Notify({ Title = "🔄 恢复成功", Content = "黑洞配置及进度条已恢复默认", Duration = 2, Icon = "refresh-cw" })
+    end,
+})
+
+-- ===== ESP页组件定义 =====
+Tabs.Esp:Section({Title = "玩家透视"})
+local ESP_CFG = { Enabled = false, Box = false, Name = false, Health = false, Distance = false, TracerTop = false, TracerBottom = false }
+local ESP_Cache, ESP_Conn = {}, nil
+local function ESP_clean() for _, d in pairs(ESP_Cache) do for _, o in pairs(d) do pcall(function() o:Remove() end) end end ESP_Cache = {} end
+local function ESP_new(p)
+    if ESP_Cache[p] then return ESP_Cache[p] end
+    local d = { Box = Drawing.new("Square"), Name = Drawing.new("Text"), Health = Drawing.new("Text"), Distance = Drawing.new("Text"), TracerTop = Drawing.new("Line"), TracerBottom = Drawing.new("Line") }
+    d.Box.Thickness = 1; d.Box.Filled = false; d.Box.Transparency = 1; d.Box.Color = Color3.fromRGB(255, 255, 255)
+    d.Name.Size = 14; d.Name.Center = true; d.Name.Outline = true; d.Name.Color = Color3.fromRGB(255, 255, 255)
+    d.Health.Size = 12; d.Health.Outline = true; d.Health.Color = Color3.fromRGB(0, 255, 0)
+    d.Distance.Size = 12; d.Distance.Center = true; d.Distance.Outline = true; d.Distance.Color = Color3.fromRGB(255, 255, 0)
+    d.TracerTop.Thickness = 1; d.TracerTop.Color = Color3.fromRGB(255, 255, 255)
+    d.TracerBottom.Thickness = 1; d.TracerBottom.Color = Color3.fromRGB(255, 255, 255)
+    for _, o in pairs(d) do o.Visible = false end
+    ESP_Cache[p] = d; return d
+end
+local function ESP_hide(p) local d = ESP_Cache[p]; if not d then return end; for _, o in pairs(d) do o.Visible = false end end
+local function ESP_start()
+    if ESP_Conn then ESP_Conn:Disconnect() end
+    ESP_Conn = RunService.RenderStepped:Connect(function()
+        if not ESP_CFG.Enabled then ESP_clean() return end
+        local cam = Workspace.CurrentCamera; if not cam then return end
+        local mePos = cam.CFrame.Position
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LocalPlayer then continue end
+            local c = p.Character; local h = c and c:FindFirstChildOfClass("Humanoid"); local r = c and c:FindFirstChild("HumanoidRootPart"); local hd = c and c:FindFirstChild("Head")
+            if not (h and r and hd and h.Health > 0) then ESP_hide(p) continue end
+            local rp, onScr = cam:WorldToViewportPoint(r.Position); local hp = cam:WorldToViewportPoint(hd.Position + Vector3.new(0, 0.6, 0))
+            if not onScr then ESP_hide(p) continue end
+            local d = ESP_new(p); local hh = math.abs(rp.Y - hp.Y) * 2.4; local ww = hh * 0.55; local tl = Vector2.new(rp.X - ww / 2, rp.Y - hh / 2)
+            if ESP_CFG.Box then d.Box.Visible = true; d.Box.Size = Vector2.new(ww, hh); d.Box.Position = tl; d.Box.Color = Color3.fromRGB(255, 255, 255) else d.Box.Visible = false end
+            if ESP_CFG.Name then d.Name.Visible = true; d.Name.Position = Vector2.new(rp.X, tl.Y - 18); d.Name.Text = p.DisplayName else d.Name.Visible = false end
+            if ESP_CFG.Health then d.Health.Visible = true; d.Health.Position = Vector2.new(tl.X - 44, tl.Y); d.Health.Text = string.format("HP:%d", math.floor(h.Health + 0.5)) else d.Health.Visible = false end
+            if ESP_CFG.Distance then d.Distance.Visible = true; local dist = (r.Position - mePos).Magnitude; d.Distance.Position = Vector2.new(rp.X, tl.Y + hh + 4); d.Distance.Text = string.format("[%dm]", math.floor(dist)) else d.Distance.Visible = false end
+            if ESP_CFG.TracerTop then d.TracerTop.Visible = true; d.TracerTop.From = Vector2.new(cam.ViewportSize.X / 2, 0); d.TracerTop.To = Vector2.new(rp.X, rp.Y) else d.TracerTop.Visible = false end
+            if ESP_CFG.TracerBottom then d.TracerBottom.Visible = true; d.TracerBottom.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y); d.TracerBottom.To = Vector2.new(rp.X, rp.Y) else d.TracerBottom.Visible = false end
+        end
+    end)
+end
+Tabs.Esp:Toggle({ Title = "ESP 总开关", Default = false, Callback = function(s) ESP_CFG.Enabled = s; if s then ESP_start() else ESP_clean() end end })
+Tabs.Esp:Toggle({ Title = "显示名字", Default = false, Callback = function(s) ESP_CFG.Name = s end })
+Tabs.Esp:Toggle({ Title = "显示血量", Default = false, Callback = function(s) ESP_CFG.Health = s end })
+Tabs.Esp:Toggle({ Title = "显示距离", Default = false, Callback = function(s) ESP_CFG.Distance = s end })
+Tabs.Esp:Toggle({ Title = "显示方框", Default = false, Callback = function(s) ESP_CFG.Box = s end })
+Tabs.Esp:Toggle({ Title = "显示上天线", Default = false, Callback = function(s) ESP_CFG.TracerTop = s end })
+Tabs.Esp:Toggle({ Title = "显示下天线", Default = false, Callback = function(s) ESP_CFG.TracerBottom = s end })
+
+-- ===== 甩飞页组件定义 (完美移植源码逻辑) =====
+Tabs.Fling:Section({Title = "静默甩飞核心"})
+
+local isSilentFlyEnabled = false
+local isLoopFlyEnabled = false
+local flyConnections = {}
+local loopFlyConnections = {}
+local selectedPlayerName = nil
+
+local function SafeGetCharacter(player)
+    if not player then return nil end
+    local char = player.Character
+    if not char or not char.Parent then return nil end
+    return char
+end
+
+local function SafeGetHumanoid(char)
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function SafeGetHRP(char)
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+local function ToggleSilentFly(state)
+    isSilentFlyEnabled = state
+    for _, conn in pairs(flyConnections) do if conn then pcall(function() conn:Disconnect() end) end end
+    flyConnections = {}
+    
+    if isSilentFlyEnabled then
+        local stepConn = RunService.Stepped:Connect(function()
+            if not isSilentFlyEnabled then return end
+            local char = SafeGetCharacter(LocalPlayer)
+            local hum = SafeGetHumanoid(char)
+            local hrp = SafeGetHRP(char)
+            if hum and hrp then
+                pcall(function()
+                    hum.PlatformStand = false
+                    hum.Sit = false
+                    hum.AutoRotate = true
+                    local state = hum:GetState()
+                    if state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.FallingDown or state == Enum.HumanoidStateType.Ragdoll then
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    end
+                end)
+            end
+            if isSilentFlyEnabled then
+                for _, otherPlayer in pairs(Players:GetPlayers()) do
+                    if otherPlayer ~= LocalPlayer then
+                        local otherChar = SafeGetCharacter(otherPlayer)
+                        if otherChar then
+                            for _, part in pairs(otherChar:GetDescendants()) do
+                                if part:IsA("BasePart") then pcall(function() part.CanCollide = false end) end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        table.insert(flyConnections, stepConn)
+        
+        local heartbeatConn = RunService.Heartbeat:Connect(function()
+            if not isSilentFlyEnabled then return end
+            local char = SafeGetCharacter(LocalPlayer)
+            local hrp = SafeGetHRP(char)
+            local hum = SafeGetHumanoid(char)
+            if hum and hrp then
+                pcall(function()
+                    local currentVel = hrp.AssemblyLinearVelocity
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                    local safeY = currentVel.Y
+                    if safeY > 40 then safeY = 40 end
+                    if safeY < -40 then safeY = -40 end
+                    hrp.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+                    hrp.AssemblyLinearVelocity = Vector3.new(currentVel.X * 1.1, safeY, currentVel.Z * 1.1)
+                    RunService.RenderStepped:Wait()
+                    if hrp and hrp.Parent then hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0) end
+                end)
+            end
+        end)
+        table.insert(flyConnections, heartbeatConn)
+    end
+end
+
+Tabs.Fling:Toggle({
+    Title = "开启静默甩飞核心 (前置必开)",
+    Desc = "源码底层的防倒地、极速震荡算法",
+    Default = false,
+    Callback = function(enabled)
+        ToggleSilentFly(enabled)
+        if enabled then
+            WindUI:Notify({ Title = "🔇 核心引擎", Content = "已开启", Duration = 2, Icon = "check" })
+        else
+            WindUI:Notify({ Title = "🔇 核心引擎", Content = "已关闭", Duration = 2, Icon = "x" })
+        end
+    end,
+})
+
+Tabs.Fling:Button({
+    Title = "📋 打开选择玩家名单",
+    Desc = "点击弹出服务器玩家，可选择多个",
+    Callback = function()
+        local old = LocalPlayer.PlayerGui:FindFirstChild("ShenFlingListGui")
+        if old then old:Destroy() end
+
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "ShenFlingListGui"
+        gui.ResetOnSpawn = false
+        gui.IgnoreGuiInset = true
+        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+        local mainFrame = Instance.new("Frame")
+        mainFrame.Size = UDim2.new(0, 300, 0, 400)
+        mainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+        mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        mainFrame.BorderSizePixel = 0
+        mainFrame.Parent = gui
+        local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 8); corner.Parent = mainFrame
+        local stroke = Instance.new("UIStroke"); stroke.Color = Color3.fromRGB(0, 150, 255); stroke.Thickness = 2; stroke.Parent = mainFrame
+
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, 0, 0, 40)
+        title.Text = "选择要甩飞的玩家 (可多选)"
+        title.BackgroundTransparency = 1
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 16
+        title.Parent = mainFrame
+
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 60, 0, 30)
+        closeBtn.Position = UDim2.new(0.5, -30, 1, -40)
+        closeBtn.Text = "关闭名单"
+        closeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.Parent = mainFrame
+        closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Size = UDim2.new(1, -20, 1, -90)
+        scroll.Position = UDim2.new(0, 10, 0, 40)
+        scroll.BackgroundTransparency = 1
+        scroll.ScrollBarThickness = 6
+        scroll.Parent = mainFrame
+        local listLayout = Instance.new("UIListLayout"); listLayout.Padding = UDim.new(0, 5); listLayout.Parent = scroll
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, 0, 0, 35)
+                btn.Text = p.Name
+                btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                btn.Font = Enum.Font.Gotham
+                btn.Parent = scroll
+                local btnCorner = Instance.new("UICorner"); btnCorner.CornerRadius = UDim.new(0, 6); btnCorner.Parent = btn
+
+                btn.MouseButton1Click:Connect(function()
+                    selectedPlayerName = p.Name
+                    for _, child in ipairs(scroll:GetChildren()) do
+                        if child:IsA("TextButton") then child.BackgroundColor3 = Color3.fromRGB(50, 50, 50) end
+                    end
+                    btn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+                    WindUI:Notify({ Title = "已选择", Content = p.Name, Duration = 2, Icon = "check" })
+                end)
+            end
+        end
+    end,
+})
+
+Tabs.Fling:Button({
+    Title = "🚀 传送并甩飞选中玩家",
+    Desc = "传送过去并前后震荡3秒，必定甩飞",
+    Callback = function()
+        if not selectedPlayerName then
+            WindUI:Notify({ Title = "⚠️ 未选择玩家", Content = "请先打开名单选择玩家", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+        if not targetPlayer then
+            WindUI:Notify({ Title = "⚠️ 玩家已离开", Content = "目标不在服务器", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+
+        local targetChar = SafeGetCharacter(targetPlayer)
+        local targetHrp = SafeGetHRP(targetChar)
+        local myHrp = SafeGetHRP(LocalPlayer.Character)
+        
+        if not myHrp or not targetHrp then return end
+
+        ToggleSilentFly(true)
+        
+        task.spawn(function()
+            local startTime = tick()
+            local direction = 1
+            local lastSwitch = tick()
+            local originalPosition = myHrp.Position
+            
+            while tick() - startTime < 3 do
+                local currentTargetChar = SafeGetCharacter(targetPlayer)
+                if not currentTargetChar then break end
+                local currentTargetHrp = SafeGetHRP(currentTargetChar)
+                if not currentTargetHrp then break end
+                
+                if tick() - lastSwitch > 0.15 then
+                    direction = direction * -1
+                    lastSwitch = tick()
+                end
+                
+                local offset = direction * 2
+                local targetPos = currentTargetHrp.Position + currentTargetHrp.CFrame.LookVector * offset
+                myHrp.CFrame = CFrame.new(targetPos)
+                
+                task.wait(0.05)
+            end
+            
+            if myHrp and originalPosition then
+                myHrp.Position = originalPosition
+                myHrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                myHrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            end
+            
+            ToggleSilentFly(false)
+            WindUI:Notify({ Title = "✅ 传送甩飞完成", Content = "已返回原位", Duration = 2, Icon = "check" })
+        end)
+    end,
+})
+
+Tabs.Fling:Toggle({
+    Title = "开启循环甩飞",
+    Desc = "死死黏住选中的玩家，持续前后震荡",
+    Default = false,
+    Callback = function(enabled)
+        if enabled and not selectedPlayerName then
+            WindUI:Notify({ Title = "⚠️ 未选择玩家", Content = "请先打开名单选择玩家", Duration = 2, Icon = "alert-circle" })
+            return
+        end
+        
+        isLoopFlyEnabled = enabled
+        for _, conn in pairs(loopFlyConnections) do if conn then pcall(function() conn:Disconnect() end) end end
+        loopFlyConnections = {}
+        
+        if isLoopFlyEnabled then
+            ToggleSilentFly(true)
+            local loopConn = RunService.Heartbeat:Connect(function()
+                if not isLoopFlyEnabled then return end
+                
+                local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+                if not targetPlayer then
+                    ToggleSilentFly(false)
+                    isLoopFlyEnabled = false
+                    WindUI:Notify({ Title = "⚠️ 循环结束", Content = "目标已离开", Duration = 2, Icon = "x" })
+                    return
+                end
+                
+                local targetHrp = SafeGetHRP(SafeGetCharacter(targetPlayer))
+                local myHrp = SafeGetHRP(LocalPlayer.Character)
+                if myHrp and targetHrp then
+                    local direction = math.sin(tick() * 6)
+                    local offset = direction * 2.5
+                    local targetPos = targetHrp.Position + targetHrp.CFrame.LookVector * offset
+                    myHrp.CFrame = CFrame.new(targetPos)
+                end
+            end)
+            table.insert(loopFlyConnections, loopConn)
+            WindUI:Notify({ Title = "🔄 循环甩飞", Content = "已开启", Duration = 2, Icon = "refresh-ccw" })
+        else
+            ToggleSilentFly(false)
+            WindUI:Notify({ Title = "🔄 循环甩飞", Content = "已关闭", Duration = 2, Icon = "x" })
+        end
+    end,
+})
+
+-- 【新增】底部小字提醒
+Tabs.Fling:Divider()
+Tabs.Fling:Paragraph({
+    Title = "⚠️ 重要提醒",
+    Desc = "如果要用甩飞，请先去【玩家】功能里面打开【禁用摔落伤害】功能，否则你会摔死。",
+})
+
+-- ===== 设置页组件定义 =====
+Tabs.Settings:Section({Title = "⚙️ 脚本设置"})
+Tabs.Settings:Paragraph({ Title = "关于本脚本", Desc = "本脚本完全免费，由神之制作。仅供个人娱乐使用，请勿用于商业或倒卖。" })
+Tabs.Settings:Divider()
+Tabs.Settings:Paragraph({ Title = "使用建议", Desc = "1. 建议在自然灾害生存游戏中使用。\n2. 如果发现卡顿，请尝试关闭黑洞或ESP功能。\n3. 请遵守游戏规则，合理使用。" })
+Tabs.Settings:Divider()
+Tabs.Settings:Paragraph({ Title = "联系我们", Desc = "如有任何问题或建议，请前往公告页复制QQ群号加入官方群组反馈。" })
+
+-- ===== 实时更新信息核心逻辑 =====
+task.spawn(function()
+    local function safeSetDesc(obj, text)
+        if obj then pcall(function() if type(obj.SetDesc) == "function" then obj:SetDesc(tostring(text)) end end) end
+    end
+    task.wait(1)
+    if LocalPlayer then
+        safeSetDesc(playerNameDesc, LocalPlayer.Name)
+        safeSetDesc(serverDesc, game.JobId)
+        local executorName = "未知注入器"
+        pcall(function() if identifyexecutor then executorName = identifyexecutor() elseif getexecutorname then executorName = getexecutorname() end end)
+        safeSetDesc(executorDesc, executorName)
+    end
+    while task.wait(0.5) do
+        if LocalPlayer and LocalPlayer.Character then
+            local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then safeSetDesc(healthDesc, math.floor(humanoid.Health) .. " / " .. math.floor(humanoid.MaxHealth)) else safeSetDesc(healthDesc, "角色未加载") end
+        end
+        if Players then safeSetDesc(playerCountDesc, #Players:GetPlayers() .. " 人") end
+    end
+end)
+
+-- ===== 玩家功能标签页 =====
+local infJumpEnabled = false
+local noclipEnabled = false
+local invisibleEnabled = false
+local speedEnabled = false
+local jumpEnabled = false
+
+Tabs.Player:Section({Title = "移动设置"})
+
+Tabs.Player:Toggle({ Title = "开启速度修改", Icon = "zap", Default = false, Callback = function(enabled) speedEnabled = enabled; if not enabled and LocalPlayer.Character then local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if hum then hum.WalkSpeed = 16 end end end })
+Tabs.Player:Slider({ Title = "移动速度", Step = 1, Value = {Min = 16, Max = 200, Default = 16}, Callback = function(value) if speedEnabled and LocalPlayer and LocalPlayer.Character then local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid.WalkSpeed = value end end end })
+Tabs.Player:Toggle({ Title = "开启跳跃修改", Icon = "arrow-up", Default = false, Callback = function(enabled) jumpEnabled = enabled; if not enabled and LocalPlayer.Character then local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if hum then hum.UseJumpPower = true; hum.JumpPower = 50 end end end })
+Tabs.Player:Slider({ Title = "跳跃高度", Step = 1, Value = {Min = 50, Max = 500, Default = 50}, Callback = function(value) if jumpEnabled and LocalPlayer and LocalPlayer.Character then local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid.UseJumpPower = true; humanoid.JumpPower = value end end end })
+
+local spinEnabled = false
+local spinSpeed = 10
+local spinConn = nil
+local function applySpin()
+    if spinConn then spinConn:Disconnect() spinConn = nil end
+    local char = LocalPlayer.Character
+    if char then local humanoid = char:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid.AutoRotate = not spinEnabled end end
+    if not spinEnabled then return end
+    spinConn = RunService.Heartbeat:Connect(function(dt)
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then local angle = math.rad(spinSpeed * 2 * 360) * dt; hrp.CFrame = hrp.CFrame * CFrame.Angles(0, angle, 0) end
+    end)
+end
+Tabs.Player:Toggle({ Title = "原地旋转", Icon = "refresh-cw", Default = false, Callback = function(enabled) spinEnabled = enabled; applySpin() end })
+Tabs.Player:Slider({ Title = "旋转速度 (圈/秒)", Step = 1, Value = {Min = 1, Max = 10000, Default = 10}, Callback = function(value) spinSpeed = value; if spinEnabled then applySpin() end end })
+
+Tabs.Player:Section({Title = "特殊功能"})
+Tabs.Player:Toggle({ Title = "无限跳跃", Icon = "activity", Default = false, Callback = function(enabled) infJumpEnabled = enabled end })
+Tabs.Player:Toggle({ Title = "穿墙", Icon = "shield-off", Default = false, Callback = function(enabled) noclipEnabled = enabled; if not enabled and LocalPlayer.Character then task.spawn(function() task.wait(1); for _, v in pairs(LocalPlayer.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = true end end end) end end })
+
+local antiFlingEnabled = false
+local antiFlingConn = nil
+local savedCanCollide = {}
+local antiFlingOverlapParams = OverlapParams.new()
+antiFlingOverlapParams.FilterType = Enum.RaycastFilterType.Exclude
+antiFlingOverlapParams.MaxParts = 20
+local otherCharCache = {}
+local function refreshOtherChars() otherCharCache = {}; for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LocalPlayer and plr.Character then otherCharCache[plr.Character] = true end end end
+local function isOtherPlayerPart(part) local model = part:FindFirstAncestorOfClass("Model"); return model and otherCharCache[model] == true end
+local function restoreAllCanCollide() for part, orig in pairs(savedCanCollide) do if part and part.Parent then pcall(function() part.CanCollide = orig end) end end savedCanCollide = {} end
+local antiFlingAccum = 0
+local ANTI_FLING_INTERVAL = 1 / 30
+local function applyAntiFling()
+    if antiFlingConn then antiFlingConn:Disconnect() antiFlingConn = nil end
+    if not antiFlingEnabled then restoreAllCanCollide() return end
+    refreshOtherChars()
+    local lastRefresh = tick()
+    antiFlingAccum = 0
+    antiFlingConn = RunService.Heartbeat:Connect(function(dt)
+        antiFlingAccum = antiFlingAccum + dt
+        if antiFlingAccum < ANTI_FLING_INTERVAL then return end
+        antiFlingAccum = 0
+        if tick() - lastRefresh > 2 then refreshOtherChars(); lastRefresh = tick() end
+        local char = LocalPlayer.Character
+        if not char then return end
+        antiFlingOverlapParams.FilterDescendantsInstances = { char }
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                if savedCanCollide[part] == nil then savedCanCollide[part] = part.CanCollide end
+                local overlaps = workspace:GetPartsInPart(part, antiFlingOverlapParams)
+                local touching = false
+                for _, hit in ipairs(overlaps) do if isOtherPlayerPart(hit) then touching = true break end end
+                if touching and part.CanCollide then part.CanCollide = false
+                elseif not touching and savedCanCollide[part] and not part.CanCollide then part.CanCollide = true end
+            end
+        end
+    end)
+end
+LocalPlayer.CharacterAdded:Connect(function() savedCanCollide = {}; if antiFlingEnabled then task.wait(0.3); refreshOtherChars() end end)
+Tabs.Player:Toggle({ Title = "防穿飞", Icon = "shield", Default = false, Callback = function(state) antiFlingEnabled = state; applyAntiFling() end })
+
+local NDS_FALL_ENABLED = false
+local NDS_FALL_CONN = nil
+local function NDS_applyToChar(char)
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return end
+    if NDS_FALL_CONN then NDS_FALL_CONN:Disconnect() NDS_FALL_CONN = nil end
+    NDS_FALL_CONN = RunService.Heartbeat:Connect(function()
+        if not NDS_FALL_ENABLED then return end
+        if not hrp or not hrp.Parent then return end
+        local vel = hrp.AssemblyLinearVelocity
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        RunService.RenderStepped:Wait()
+        if hrp and hrp.Parent then hrp.AssemblyLinearVelocity = vel end
+    end)
+end
+LocalPlayer.CharacterAdded:Connect(function(char) if NDS_FALL_ENABLED then task.wait(0.3); NDS_applyToChar(char) end end)
+Tabs.Player:Toggle({ Title = "禁用摔落伤害", Icon = "shield", Default = false, Callback = function(state) NDS_FALL_ENABLED = state; if state then if LocalPlayer.Character then NDS_applyToChar(LocalPlayer.Character) end else if NDS_FALL_CONN then NDS_FALL_CONN:Disconnect() NDS_FALL_CONN = nil end end end })
+
+Tabs.Player:Button({ Title = "神飞行 (点击执行)", Callback = function() task.spawn(function() pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/luauser729/bbb/main/shen.lua"))() end) end) end })
+
+Tabs.Player:Toggle({ Title = "隐身", Icon = "eye-off", Default = false, Callback = function(enabled) invisibleEnabled = enabled; if LocalPlayer.Character then for _, v in pairs(LocalPlayer.Character:GetDescendants()) do if v:IsA("BasePart") or v:IsA("Decal") then v.Transparency = enabled and 1 or 0 end end end end })
+
+Tabs.Player:Button({ Title = "重置角色 (满血复活)", Callback = function() if LocalPlayer.Character then local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid.Health = 0 end end end })
+
+-- ===== 功能核心循环 =====
+UserInputService.JumpRequest:Connect(function() if infJumpEnabled and LocalPlayer.Character then local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
+
+RunService.Stepped:Connect(function()
+    if noclipEnabled and LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do if v:IsA("BasePart") and v.CanCollide then v.CanCollide = false end end
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    local humanoid = char:WaitForChild("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = 16
+        humanoid.UseJumpPower = true
+        humanoid.JumpPower = 50
+        if invisibleEnabled then for _, v in pairs(char:GetDescendants()) do if v:IsA("BasePart") or v:IsA("Decal") then v.Transparency = 1 end end end
+    end
+end)
+
+Window:SelectTab(1)
