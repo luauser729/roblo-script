@@ -1044,3 +1044,167 @@ task.spawn(function()
         end,
     })
 end)
+-- =========================================================
+-- 🌀 末尾补丁：黑洞（仅开启生效）
+-- =========================================================
+task.spawn(function()
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local HttpService = game:GetService("HttpService")
+    local Workspace = game:GetService("Workspace")
+    local LocalPlayer = Players.LocalPlayer
+
+    local BlackHoleTab
+    for _ = 1, 60 do
+        if Tabs and Tabs.BlackHole then BlackHoleTab = Tabs.BlackHole break end
+        task.wait(0.1)
+    end
+    if not BlackHoleTab then return end
+    if getgenv().ShenBlackHoleInjected then return end
+    getgenv().ShenBlackHoleInjected = true
+
+    -- 清空黑洞 Tab（保险）
+    local function wipe(tab)
+        for _, c in ipairs(tab:GetChildren()) do pcall(function() c:Destroy() end) end
+        pcall(function()
+            if tab.Container then
+                for _, c in ipairs(tab.Container:GetChildren()) do pcall(function() c:Destroy() end) end
+            end
+        end)
+    end
+    wipe(BlackHoleTab)
+
+    -- 配置
+    local config = { radius = 50, height = 100, rotationSpeed = 10, attractionStrength = 1000 }
+    pcall(function()
+        if isfile and isfile("SuperRingPartsConfig.txt") then
+            local ok, data = pcall(function() return HttpService:JSONDecode(readfile("SuperRingPartsConfig.txt")) end)
+            if ok and type(data) == "table" then
+                if data.radius then config.radius = data.radius end
+                if data.height then config.height = data.height end
+                if data.rotationSpeed then config.rotationSpeed = data.rotationSpeed end
+                if data.attractionStrength then config.attractionStrength = data.attractionStrength end
+            end
+        end
+    end)
+    local function saveConfig()
+        pcall(function()
+            if writefile then writefile("SuperRingPartsConfig.txt", HttpService:JSONEncode(config)) end
+        end)
+    end
+
+    local parts = {}
+    local ringPartsEnabled = false
+
+    local function RetainPart(Part)
+        if Part:IsA("BasePart") and not Part.Anchored and Part:IsDescendantOf(Workspace) then
+            if Part.Parent == LocalPlayer.Character or Part:IsDescendantOf(LocalPlayer.Character) then return false end
+            if not Part:FindFirstChild("Torque") then
+                for _, x in next, Part:GetChildren() do
+                    if x:IsA("BodyAngularVelocity") or x:IsA("BodyForce") or x:IsA("BodyGyro") or x:IsA("BodyPosition") or x:IsA("BodyThrust") or x:IsA("BodyVelocity") or x:IsA("RocketPropulsion") then x:Destroy() end
+                end
+                if Part:FindFirstChild("Attachment") then Part:FindFirstChild("Attachment"):Destroy() end
+                if Part:FindFirstChild("AlignPosition") then Part:FindFirstChild("AlignPosition"):Destroy() end
+                Part.CanCollide = false
+                local Torque = Instance.new("Torque", Part)
+                Torque.Torque = Vector3.new(100000, 100000, 100000)
+                local Attachment2 = Instance.new("Attachment", Part)
+                Torque.Attachment0 = Attachment2
+                local AlignPosition = Instance.new("AlignPosition", Part)
+                AlignPosition.MaxForce = 9999999999999999999999999999999
+                AlignPosition.MaxVelocity = math.huge
+                AlignPosition.Responsiveness = 200
+                AlignPosition.Attachment0 = Attachment2
+            end
+            Part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+            Part.CanCollide = false
+            return true
+        end
+        return false
+    end
+
+    local function addPart(part)
+        if ringPartsEnabled and RetainPart(part) and not table.find(parts, part) then
+            table.insert(parts, part)
+        end
+    end
+    local function removePart(part) local i = table.find(parts, part); if i then table.remove(parts, i) end end
+    Workspace.DescendantAdded:Connect(addPart)
+    Workspace.DescendantRemoving:Connect(removePart)
+
+    -- 核心：只在开启时动部件
+    RunService.Heartbeat:Connect(function()
+        if not ringPartsEnabled then return end
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            if d:IsA("BasePart") and not d.Anchored and not table.find(parts, d) then addPart(d) end
+        end
+
+        local center = hrp.Position
+        for _, part in pairs(parts) do
+            if part.Parent and not part.Anchored then
+                local pos = part.Position
+                local distance = (Vector3.new(pos.X, center.Y, pos.Z) - center).Magnitude
+                local angle = math.atan2(pos.Z - center.Z, pos.X - center.X)
+                local newAngle = angle + math.rad(config.rotationSpeed)
+                local targetPos = Vector3.new(
+                    center.X + math.cos(newAngle) * math.min(config.radius, distance),
+                    center.Y + (config.height * (math.abs(math.sin((pos.Y - center.Y) / math.max(config.height, 1))))),
+                    center.Z + math.sin(newAngle) * math.min(config.radius, distance)
+                )
+                local dir = (targetPos - part.Position).unit
+                part.Velocity = dir * config.attractionStrength
+            end
+        end
+    end)
+
+    -- UI
+    BlackHoleTab:Section({Title = "🌀 超级黑洞（环绕吸附）"})
+
+    BlackHoleTab:Toggle({
+        Title = "开启超级黑洞",
+        Desc = "只有开启后才会吸附物体，关闭则完全不动",
+        Icon = "circle",
+        Default = false,
+        Callback = function(enabled)
+            ringPartsEnabled = enabled
+            if enabled then
+                parts = {}
+                for _, d in ipairs(Workspace:GetDescendants()) do
+                    if d:IsA("BasePart") and not d.Anchored then addPart(d) end
+                end
+            else
+                parts = {}
+            end
+            if LocalPlayer.Character then
+                for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
+                        v.CanCollide = not enabled
+                    end
+                end
+            end
+            WindUI:Notify({ Title = "🌀 超级黑洞", Content = enabled and "已开启" or "已关闭", Duration = 2, Icon = enabled and "circle" or "x" })
+        end,
+    })
+
+    local radiusSlider = BlackHoleTab:Slider({ Title = "环绕半径", Step = 10, Value = {Min = 0, Max = 500, Default = config.radius}, Callback = function(v) config.radius = v; saveConfig() end })
+    local heightSlider = BlackHoleTab:Slider({ Title = "悬浮高度", Step = 10, Value = {Min = 0, Max = 300, Default = config.height}, Callback = function(v) config.height = v; saveConfig() end })
+    local speedSlider  = BlackHoleTab:Slider({ Title = "旋转速度", Step = 1, Value = {Min = 0, Max = 100, Default = config.rotationSpeed}, Callback = function(v) config.rotationSpeed = v; saveConfig() end })
+    local forceSlider  = BlackHoleTab:Slider({ Title = "吸附力量", Step = 100, Value = {Min = 0, Max = 10000, Default = config.attractionStrength}, Callback = function(v) config.attractionStrength = v; saveConfig() end })
+
+    BlackHoleTab:Button({
+        Title = "🔄 恢复默认配置",
+        Desc = "半径 50 / 高度 100 / 速度 10 / 力量 1000",
+        Callback = function()
+            config.radius = 50; config.height = 100; config.rotationSpeed = 10; config.attractionStrength = 1000
+            pcall(function() radiusSlider:Set(50) end)
+            pcall(function() heightSlider:Set(100) end)
+            pcall(function() speedSlider:Set(10) end)
+            pcall(function() forceSlider:Set(1000) end)
+            saveConfig()
+            WindUI:Notify({ Title = "🔄 已恢复默认", Content = "黑洞配置已重置", Duration = 2, Icon = "refresh-cw" })
+        end,
+    })
+end)
